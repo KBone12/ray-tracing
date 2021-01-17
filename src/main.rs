@@ -27,14 +27,14 @@ impl Ray {
 
 type Color = Vector3<f64>;
 
-fn random_vector_in_unit_sphere<R: Rng>(rng: &mut R) -> Vector3<f64> {
+fn random_unit_vector<R: Rng>(rng: &mut R) -> Vector3<f64> {
     let distribution = Uniform::from(0.0..1.0);
     loop {
         let x = distribution.sample(rng);
         let y = distribution.sample(rng);
         let z = distribution.sample(rng);
-        if x * x + y * y + z * z < 1.0 {
-            return Vector3::new(x, y, z);
+        if x * x + y * y + z * z <= 1.0 {
+            return Vector3::new(x, y, z).normalize();
         }
     }
 }
@@ -46,7 +46,7 @@ fn ray_color<H: Hittable, R: Rng>(ray: &Ray, hittable: &H, rng: &mut R, depth: u
 
     let record = hittable.hit(ray, 0.001..);
     if let Some(record) = record {
-        let target = record.p + record.normal + random_vector_in_unit_sphere(rng);
+        let target = record.p + record.normal + random_unit_vector(rng);
         return ray_color(
             &Ray::new(record.p, target - record.p),
             hittable,
