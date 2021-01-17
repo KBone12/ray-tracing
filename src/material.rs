@@ -84,7 +84,12 @@ impl Material for Dielectric {
         let direction = ray.direction.normalize();
         let cos = (-direction.dot(record.normal)).min(1.0).max(-1.0);
         let sin = (1.0 - cos * cos).sqrt();
-        let direction = if refraction_ratio * sin > 1.0 {
+        let reflectance = {
+            let r0 = (1.0 - refraction_ratio) / (1.0 + refraction_ratio);
+            let r0 = r0 * r0;
+            r0 + (1.0 - r0) * (1.0 - cos).powi(5)
+        };
+        let direction = if refraction_ratio * sin > 1.0 || reflectance > random_double() {
             let normalized_ray_direction = ray.direction.normalize();
             normalized_ray_direction
                 - 2.0 * normalized_ray_direction.dot(record.normal) * record.normal
@@ -112,4 +117,8 @@ fn random_vector_in_unit_sphere() -> Vector3<f64> {
 
 fn random_unit_vector() -> Vector3<f64> {
     random_vector_in_unit_sphere().normalize()
+}
+
+fn random_double() -> f64 {
+    Uniform::from(0.0..1.0).sample(&mut rand::thread_rng())
 }
