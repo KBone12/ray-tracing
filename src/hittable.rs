@@ -2,11 +2,12 @@ use std::ops::RangeBounds;
 
 use cgmath::{InnerSpace, Point3, Vector3};
 
-use crate::Ray;
+use crate::{material::Material, Ray};
 
-pub struct HitRecord {
+pub struct HitRecord<'material> {
     pub p: Point3<f64>,
     pub normal: Vector3<f64>,
+    pub material: &'material Box<dyn Material>,
     pub t: f64,
     pub front_face: bool,
 }
@@ -26,11 +27,16 @@ impl<H: Hittable> Hittable for Vec<H> {
 pub struct Sphere {
     center: Point3<f64>,
     radius: f64,
+    material: Box<dyn Material>,
 }
 
 impl Sphere {
-    pub fn new(center: Point3<f64>, radius: f64) -> Self {
-        Self { center, radius }
+    pub fn new(center: Point3<f64>, radius: f64, material: Box<dyn Material>) -> Self {
+        Self {
+            center,
+            radius,
+            material,
+        }
     }
 }
 
@@ -53,6 +59,7 @@ impl Hittable for Sphere {
                 Some(HitRecord {
                     p,
                     normal: if front_face { normal } else { -normal },
+                    material: &self.material,
                     t,
                     front_face,
                 })
@@ -66,6 +73,7 @@ impl Hittable for Sphere {
                     Some(HitRecord {
                         p,
                         normal: if front_face { normal } else { -normal },
+                        material: &self.material,
                         t,
                         front_face,
                     })
