@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use cgmath::{InnerSpace, Point3, Vector3};
-use rand::{distributions::Uniform, prelude::Distribution, rngs::SmallRng, SeedableRng};
+use rand::{distributions::Uniform, prelude::Distribution, rngs::SmallRng, Rng, SeedableRng};
 
 mod camera;
 mod hittable;
@@ -23,23 +23,41 @@ impl Ray {
     pub fn at(&self, t: f64) -> Point3<f64> {
         self.origin + t * self.direction
     }
-
-    pub fn color<H: Hittable>(&self, hittable: H) -> Color {
-        let record = hittable.hit(&self, 0.0..);
-        if let Some(record) = record {
-            return Color::new(
-                record.normal.x + 1.0,
-                record.normal.y + 1.0,
-                record.normal.z + 1.0,
-            ) / 2.0;
-        }
-        let unit_direction = self.direction.normalize();
-        let t = (unit_direction.y + 1.0) / 2.0;
-        (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0)
-    }
 }
 
 type Color = Vector3<f64>;
+
+fn random_vector_in_unit_sphere<R: Rng>(rng: &mut R) -> Vector3<f64> {
+    let distribution = Uniform::from(0.0..1.0);
+    loop {
+        let x = distribution.sample(rng);
+        let y = distribution.sample(rng);
+        let z = distribution.sample(rng);
+        if x * x + y * y + z * z < 1.0 {
+            return Vector3::new(x, y, z);
+        }
+    }
+}
+
+fn ray_color<H: Hittable, R: Rng>(ray: &Ray, hittable: &H, rng: &mut R, depth: usize) -> Color {
+    if depth == 0 {
+        return Color::new(0.0, 0.0, 0.0);
+    }
+
+    let record = hittable.hit(ray, 0.0..);
+    if let Some(record) = record {
+        let target = record.p + record.normal + random_vector_in_unit_sphere(rng);
+        return ray_color(
+            &Ray::new(record.p, target - record.p),
+            hittable,
+            rng,
+            depth - 1,
+        ) / 2.0;
+    }
+    let unit_direction = ray.direction.normalize();
+    let t = (unit_direction.y + 1.0) / 2.0;
+    (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0)
+}
 
 fn write_color<W: Write>(mut writer: W, color: Color, samples_per_pixel: usize) {
     let r = color.x / samples_per_pixel as f64;
@@ -60,6 +78,7 @@ fn main() {
     const IMAGE_WIDTH: usize = 400;
     const IMAGE_HEIGHT: usize = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as usize;
     const SAMPLES_PER_PIXEL: usize = 100;
+    const MAX_DEPTH: usize = 50;
 
     let hittables = vec![
         Sphere::new(Point3::new(0.0, 0.0, -1.0), 0.5),
@@ -85,7 +104,7 @@ fn main() {
                 let v = ((IMAGE_HEIGHT - y) as f64 + distribution.sample(&mut rng))
                     / (IMAGE_HEIGHT as f64 - 1.0);
                 let ray = camera.ray(u, v);
-                acc + ray.color(&hittables)
+                acc + ray_color(&ray, &hittables, &mut rng, MAX_DEPTH)
             });
             write_color(std::io::stdout(), color, SAMPLES_PER_PIXEL);
         }
