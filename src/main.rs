@@ -39,17 +39,57 @@ fn random_unit_vector<R: Rng>(rng: &mut R) -> Vector3<f64> {
     }
 }
 
-fn ray_color<H: Hittable, R: Rng>(ray: &Ray, hittable: &H, rng: &mut R, depth: usize) -> Color {
+fn random_vector_in_hemisphere<R: Rng>(normal: Vector3<f64>, rng: &mut R) -> Vector3<f64> {
+    let distribution = Uniform::from(0.0..1.0);
+    loop {
+        let x = distribution.sample(rng);
+        let y = distribution.sample(rng);
+        let z = distribution.sample(rng);
+        if x * x + y * y + z * z <= 1.0 {
+            let in_sphere = Vector3::new(x, y, z);
+            if in_sphere.dot(normal) > 0.0 {
+                return in_sphere;
+            } else {
+                return -in_sphere;
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+#[allow(dead_code)]
+enum DiffuseMethod {
+    Lambertian,
+    HemisphericalScattering,
+}
+
+impl DiffuseMethod {
+    pub fn get_vector<R: Rng>(self, normal: Vector3<f64>, rng: &mut R) -> Vector3<f64> {
+        match self {
+            DiffuseMethod::Lambertian => normal + random_unit_vector(rng),
+            DiffuseMethod::HemisphericalScattering => random_vector_in_hemisphere(normal, rng),
+        }
+    }
+}
+
+fn ray_color<H: Hittable, R: Rng>(
+    ray: &Ray,
+    hittable: &H,
+    diffuse: DiffuseMethod,
+    rng: &mut R,
+    depth: usize,
+) -> Color {
     if depth == 0 {
         return Color::new(0.0, 0.0, 0.0);
     }
 
     let record = hittable.hit(ray, 0.001..);
     if let Some(record) = record {
-        let target = record.p + record.normal + random_unit_vector(rng);
+        let target = record.p + diffuse.get_vector(record.normal, rng);
         return ray_color(
             &Ray::new(record.p, target - record.p),
             hittable,
+            diffuse,
             rng,
             depth - 1,
         ) / 2.0;
@@ -105,7 +145,13 @@ fn main() {
                 let v = ((IMAGE_HEIGHT - y) as f64 + distribution.sample(&mut rng))
                     / (IMAGE_HEIGHT as f64 - 1.0);
                 let ray = camera.ray(u, v);
-                acc + ray_color(&ray, &hittables, &mut rng, MAX_DEPTH)
+                acc + ray_color(
+                    &ray,
+                    &hittables,
+                    DiffuseMethod::HemisphericalScattering,
+                    &mut rng,
+                    MAX_DEPTH,
+                )
             });
             write_color(std::io::stdout(), color, SAMPLES_PER_PIXEL);
         }
