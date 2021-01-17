@@ -12,12 +12,12 @@ pub struct HitRecord {
 }
 
 pub trait Hittable {
-    fn hit<R: Clone + RangeBounds<f64>>(self, ray: &Ray, t_range: R) -> Option<HitRecord>;
+    fn hit<R: Clone + RangeBounds<f64>>(&self, ray: &Ray, t_range: R) -> Option<HitRecord>;
 }
 
-impl<H: Hittable, I: IntoIterator<Item = H>> Hittable for I {
-    fn hit<R: Clone + RangeBounds<f64>>(self, ray: &Ray, t_range: R) -> Option<HitRecord> {
-        self.into_iter()
+impl<H: Hittable> Hittable for Vec<H> {
+    fn hit<R: Clone + RangeBounds<f64>>(&self, ray: &Ray, t_range: R) -> Option<HitRecord> {
+        self.iter()
             .filter_map(|hittable| hittable.hit(ray, t_range.clone()))
             .min_by(|a, b| a.t.partial_cmp(&b.t).expect("Hit objects did not found"))
     }
@@ -34,8 +34,8 @@ impl Sphere {
     }
 }
 
-impl<'sphere> Hittable for &'sphere Sphere {
-    fn hit<R: Clone + RangeBounds<f64>>(self, ray: &Ray, t_range: R) -> Option<HitRecord> {
+impl Hittable for Sphere {
+    fn hit<R: Clone + RangeBounds<f64>>(&self, ray: &Ray, t_range: R) -> Option<HitRecord> {
         let vec_from_center = ray.origin - self.center;
         let a = ray.direction.dot(ray.direction);
         let half_b = vec_from_center.dot(ray.direction);
