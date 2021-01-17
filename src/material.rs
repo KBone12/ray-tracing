@@ -62,6 +62,36 @@ impl Material for Metal {
     }
 }
 
+pub struct Dielectric {
+    index_of_refraction: f64,
+}
+
+impl Dielectric {
+    pub fn new(index_of_refraction: f64) -> Self {
+        Self {
+            index_of_refraction,
+        }
+    }
+}
+
+impl Material for Dielectric {
+    fn scatter(&self, ray: &Ray, record: &HitRecord) -> Option<(Ray, Color)> {
+        let refraction_ratio = if record.front_face {
+            1.0 / self.index_of_refraction
+        } else {
+            self.index_of_refraction
+        };
+        let direction = ray.direction.normalize();
+        let cos = (-direction.dot(record.normal)).min(1.0).max(-1.0);
+        let perp = refraction_ratio * (direction + cos * record.normal);
+        let parallel = -((1.0 - perp.dot(perp)).abs().sqrt()) * record.normal;
+        Some((
+            Ray::new(record.p, perp + parallel),
+            Color::new(1.0, 1.0, 1.0),
+        ))
+    }
+}
+
 fn random_vector_in_unit_sphere() -> Vector3<f64> {
     let distribution = Uniform::from(0.0..1.0);
     let mut rng = rand::thread_rng();
