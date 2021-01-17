@@ -1,13 +1,15 @@
 use std::io::Write;
 
-use cgmath::{InnerSpace, Point3, Vector3};
+use cgmath::{ElementWise, InnerSpace, Point3, Vector3};
 use rand::{distributions::Uniform, prelude::Distribution, rngs::SmallRng, Rng, SeedableRng};
 
 mod camera;
 mod hittable;
+mod material;
 use crate::{
     camera::Camera,
     hittable::{Hittable, Sphere},
+    material::{Lambertian, Metal},
 };
 
 pub struct Ray {
@@ -25,74 +27,20 @@ impl Ray {
     }
 }
 
-type Color = Vector3<f64>;
+pub type Color = Vector3<f64>;
 
-fn random_unit_vector<R: Rng>(rng: &mut R) -> Vector3<f64> {
-    let distribution = Uniform::from(0.0..1.0);
-    loop {
-        let x = distribution.sample(rng);
-        let y = distribution.sample(rng);
-        let z = distribution.sample(rng);
-        if x * x + y * y + z * z <= 1.0 {
-            return Vector3::new(x, y, z).normalize();
-        }
-    }
-}
-
-fn random_vector_in_hemisphere<R: Rng>(normal: Vector3<f64>, rng: &mut R) -> Vector3<f64> {
-    let distribution = Uniform::from(0.0..1.0);
-    loop {
-        let x = distribution.sample(rng);
-        let y = distribution.sample(rng);
-        let z = distribution.sample(rng);
-        if x * x + y * y + z * z <= 1.0 {
-            let in_sphere = Vector3::new(x, y, z);
-            if in_sphere.dot(normal) > 0.0 {
-                return in_sphere;
-            } else {
-                return -in_sphere;
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
-enum DiffuseMethod {
-    Lambertian,
-    HemisphericalScattering,
-}
-
-impl DiffuseMethod {
-    pub fn get_vector<R: Rng>(self, normal: Vector3<f64>, rng: &mut R) -> Vector3<f64> {
-        match self {
-            DiffuseMethod::Lambertian => normal + random_unit_vector(rng),
-            DiffuseMethod::HemisphericalScattering => random_vector_in_hemisphere(normal, rng),
-        }
-    }
-}
-
-fn ray_color<H: Hittable, R: Rng>(
-    ray: &Ray,
-    hittable: &H,
-    diffuse: DiffuseMethod,
-    rng: &mut R,
-    depth: usize,
-) -> Color {
+fn ray_color<H: Hittable, R: Rng>(ray: &Ray, hittable: &H, rng: &mut R, depth: usize) -> Color {
     if depth == 0 {
         return Color::new(0.0, 0.0, 0.0);
     }
 
     let record = hittable.hit(ray, 0.001..);
     if let Some(record) = record {
-        let target = record.p + diffuse.get_vector(record.normal, rng);
-        return ray_color(
-            &Ray::new(record.p, target - record.p),
-            hittable,
-            diffuse,
-            rng,
-            depth - 1,
-        ) / 2.0;
+        if let Some((scattered, attenuation)) = record.material.scatter(ray, &record) {
+            return attenuation.mul_element_wise(ray_color(&scattered, hittable, rng, depth - 1));
+        } else {
+            return Color::new(0.0, 0.0, 0.0);
+        }
     }
     let unit_direction = ray.direction.normalize();
     let t = (unit_direction.y + 1.0) / 2.0;
@@ -121,17 +69,24 @@ fn main() {
     const SAMPLES_PER_PIXEL: usize = 100;
     const MAX_DEPTH: usize = 50;
 
-    let hittables = vec![
-        Sphere::new(Point3::new(0.0, 0.0, -1.0), 0.5),
-        Sphere::new(Point3::new(0.0, -100.5, -1.0), 100.0),
-    ];
-
-    let camera = Camera::new();
-
     let distribution = Uniform::from(0.0..1.0);
     let mut rng = SmallRng::seed_from_u64(
         0b0101010101010101_0101010101010101_0101010101010101_0101010101010101,
     );
+
+    let material_ground = Box::new(Lambertian::new(Color::new(0.8, 0.8, 0.0)));
+    let material_center = Box::new(Lambertian::new(Color::new(0.7, 0.3, 0.3)));
+    let material_left = Box::new(Metal::new(Color::new(0.8, 0.8, 0.8)));
+    let material_right = Box::new(Metal::new(Color::new(0.8, 0.6, 0.2)));
+
+    let hittable: Vec<Sphere> = vec![
+        Sphere::new(Point3::new(0.0, -100.5, -1.0), 100.0, material_ground),
+        Sphere::new(Point3::new(0.0, 0.0, -1.0), 0.5, material_center),
+        Sphere::new(Point3::new(-1.0, 0.0, -1.0), 0.5, material_left),
+        Sphere::new(Point3::new(1.0, 0.0, -1.0), 0.5, material_right),
+    ];
+
+    let camera = Camera::new();
 
     // Print in PPM Image format
     println!("P3");
@@ -145,13 +100,7 @@ fn main() {
                 let v = ((IMAGE_HEIGHT - y) as f64 + distribution.sample(&mut rng))
                     / (IMAGE_HEIGHT as f64 - 1.0);
                 let ray = camera.ray(u, v);
-                acc + ray_color(
-                    &ray,
-                    &hittables,
-                    DiffuseMethod::HemisphericalScattering,
-                    &mut rng,
-                    MAX_DEPTH,
-                )
+                acc + ray_color(&ray, &hittable, &mut rng, MAX_DEPTH)
             });
             write_color(std::io::stdout(), color, SAMPLES_PER_PIXEL);
         }
