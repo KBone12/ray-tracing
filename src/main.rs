@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{io::Write, rc::Rc};
 
 use cgmath::{ElementWise, InnerSpace, Point3, Vector3};
 use rand::{distributions::Uniform, prelude::Distribution, rngs::SmallRng, Rng, SeedableRng};
@@ -78,27 +78,27 @@ fn main() {
         Sphere::new(
             Point3::new(0.0, -100.5, -1.0),
             100.0,
-            Box::new(Lambertian::new(Color::new(0.8, 0.8, 0.0))),
+            Rc::new(Box::new(Lambertian::new(Color::new(0.8, 0.8, 0.0)))),
         ),
         Sphere::new(
             Point3::new(0.0, 0.0, -1.0),
             0.5,
-            Box::new(Lambertian::new(Color::new(0.1, 0.2, 0.5))),
+            Rc::new(Box::new(Lambertian::new(Color::new(0.1, 0.2, 0.5)))),
         ),
         Sphere::new(
             Point3::new(-1.0, 0.0, -1.0),
             0.5,
-            Box::new(Dielectric::new(1.5)),
+            Rc::new(Box::new(Dielectric::new(1.5))),
         ),
         Sphere::new(
             Point3::new(-1.0, 0.0, -1.0),
             -0.45,
-            Box::new(Dielectric::new(1.5)),
+            Rc::new(Box::new(Dielectric::new(1.5))),
         ),
         Sphere::new(
             Point3::new(1.0, 0.0, -1.0),
             0.5,
-            Box::new(Metal::new(Color::new(0.8, 0.6, 0.2), 0.0)),
+            Rc::new(Box::new(Metal::new(Color::new(0.8, 0.6, 0.2), 0.0))),
         ),
     ];
 
