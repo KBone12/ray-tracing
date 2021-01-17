@@ -60,9 +60,10 @@ fn ray_color<H: Hittable, R: Rng>(ray: &Ray, hittable: &H, rng: &mut R, depth: u
 }
 
 fn write_color<W: Write>(mut writer: W, color: Color, samples_per_pixel: usize) {
-    let r = color.x / samples_per_pixel as f64;
-    let g = color.y / samples_per_pixel as f64;
-    let b = color.z / samples_per_pixel as f64;
+    // with gamma-correction for gamma = 2.0
+    let r = (color.x / samples_per_pixel as f64).sqrt();
+    let g = (color.y / samples_per_pixel as f64).sqrt();
+    let b = (color.z / samples_per_pixel as f64).sqrt();
     writeln!(
         writer,
         "{} {} {}",
