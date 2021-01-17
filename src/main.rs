@@ -44,7 +44,7 @@ fn ray_color<H: Hittable, R: Rng>(ray: &Ray, hittable: &H, rng: &mut R, depth: u
         return Color::new(0.0, 0.0, 0.0);
     }
 
-    let record = hittable.hit(ray, 0.0..);
+    let record = hittable.hit(ray, 0.001..);
     if let Some(record) = record {
         let target = record.p + record.normal + random_vector_in_unit_sphere(rng);
         return ray_color(
