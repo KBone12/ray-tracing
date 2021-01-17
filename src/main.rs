@@ -92,17 +92,23 @@ fn main() {
         ),
         Sphere::new(
             Point3::new(-1.0, 0.0, -1.0),
-            -0.4,
+            -0.45,
             Box::new(Dielectric::new(1.5)),
         ),
         Sphere::new(
             Point3::new(1.0, 0.0, -1.0),
             0.5,
-            Box::new(Metal::new(Color::new(0.8, 0.6, 0.2), 1.0)),
+            Box::new(Metal::new(Color::new(0.8, 0.6, 0.2), 0.0)),
         ),
     ];
 
-    let camera = Camera::new();
+    let camera = Camera::new(
+        Point3::new(-2.0, 2.0, 1.0),
+        Point3::new(0.0, 0.0, -1.0),
+        Vector3::new(0.0, 1.0, 0.0),
+        90.0,
+        ASPECT_RATIO,
+    );
 
     // Print in PPM Image format
     println!("P3");
