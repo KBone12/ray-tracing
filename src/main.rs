@@ -74,21 +74,41 @@ fn main() {
         0b0101010101010101_0101010101010101_0101010101010101_0101010101010101,
     );
 
-    let r = std::f64::consts::FRAC_PI_4.cos();
     let hittable: Vec<Sphere> = vec![
         Sphere::new(
-            Point3::new(-r, 0.0, -1.0),
-            r,
-            Box::new(Lambertian::new(Color::new(0.0, 0.0, 1.0))),
+            Point3::new(0.0, -100.5, -1.0),
+            100.0,
+            Box::new(Lambertian::new(Color::new(0.8, 0.8, 0.0))),
         ),
         Sphere::new(
-            Point3::new(r, 0.0, -1.0),
-            r,
-            Box::new(Lambertian::new(Color::new(1.0, 0.0, 0.0))),
+            Point3::new(0.0, 0.0, -1.0),
+            0.5,
+            Box::new(Lambertian::new(Color::new(0.1, 0.2, 0.5))),
+        ),
+        Sphere::new(
+            Point3::new(-1.0, 0.0, -1.0),
+            0.5,
+            Box::new(Dielectric::new(1.5)),
+        ),
+        Sphere::new(
+            Point3::new(-1.0, 0.0, -1.0),
+            -0.45,
+            Box::new(Dielectric::new(1.5)),
+        ),
+        Sphere::new(
+            Point3::new(1.0, 0.0, -1.0),
+            0.5,
+            Box::new(Metal::new(Color::new(0.8, 0.6, 0.2), 0.0)),
         ),
     ];
 
-    let camera = Camera::new(90.0, ASPECT_RATIO);
+    let camera = Camera::new(
+        Point3::new(-2.0, 2.0, 1.0),
+        Point3::new(0.0, 0.0, -1.0),
+        Vector3::new(0.0, 1.0, 0.0),
+        90.0,
+        ASPECT_RATIO,
+    );
 
     // Print in PPM Image format
     println!("P3");

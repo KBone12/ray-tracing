@@ -1,4 +1,4 @@
-use cgmath::{Point3, Vector3};
+use cgmath::{InnerSpace, Point3, Vector3};
 
 use crate::Ray;
 
@@ -10,31 +10,38 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new(vertical_fov: f64, aspect_ratio: f64) -> Self {
+    pub fn new(
+        position: Point3<f64>,
+        at: Point3<f64>,
+        up: Vector3<f64>,
+        vertical_fov: f64,
+        aspect_ratio: f64,
+    ) -> Self {
         let theta = vertical_fov.to_radians();
         let h = (theta / 2.0).tan();
         let viewport_height = 2.0 * h;
         let viewport_width = aspect_ratio * viewport_height;
-        let focal_length = 1.0;
 
-        let origin = Point3::new(0.0, 0.0, 0.0);
-        let horizontal = Vector3::new(viewport_width, 0.0, 0.0);
-        let vertical = Vector3::new(0.0, viewport_height, 0.0);
+        let w = (position - at).normalize();
+        let u = up.cross(w).normalize();
+        let v = w.cross(u);
+
+        let origin = position;
+        let horizontal = viewport_width * u;
+        let vertical = viewport_height * v;
+        let lower_left_corner = origin - horizontal / 2.0 - vertical / 2.0 - w;
         Self {
             origin,
             horizontal,
             vertical,
-            lower_left_corner: origin
-                - horizontal / 2.0
-                - vertical / 2.0
-                - Vector3::new(0.0, 0.0, focal_length),
+            lower_left_corner,
         }
     }
 
-    pub fn ray(&self, u: f64, v: f64) -> Ray {
+    pub fn ray(&self, s: f64, t: f64) -> Ray {
         Ray::new(
             self.origin,
-            self.lower_left_corner + u * self.horizontal + v * self.vertical - self.origin,
+            self.lower_left_corner + s * self.horizontal + t * self.vertical - self.origin,
         )
     }
 }
