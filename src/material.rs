@@ -83,12 +83,17 @@ impl Material for Dielectric {
         };
         let direction = ray.direction.normalize();
         let cos = (-direction.dot(record.normal)).min(1.0).max(-1.0);
-        let perp = refraction_ratio * (direction + cos * record.normal);
-        let parallel = -((1.0 - perp.dot(perp)).abs().sqrt()) * record.normal;
-        Some((
-            Ray::new(record.p, perp + parallel),
-            Color::new(1.0, 1.0, 1.0),
-        ))
+        let sin = (1.0 - cos * cos).sqrt();
+        let direction = if refraction_ratio * sin > 1.0 {
+            let normalized_ray_direction = ray.direction.normalize();
+            normalized_ray_direction
+                - 2.0 * normalized_ray_direction.dot(record.normal) * record.normal
+        } else {
+            let perp = refraction_ratio * (direction + cos * record.normal);
+            let parallel = -((1.0 - perp.dot(perp)).abs().sqrt()) * record.normal;
+            perp + parallel
+        };
+        Some((Ray::new(record.p, direction), Color::new(1.0, 1.0, 1.0)))
     }
 }
 
