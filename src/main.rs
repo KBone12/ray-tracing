@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use cgmath::{InnerSpace, Point3, Vector3};
+use cgmath::{EuclideanSpace, InnerSpace, Point3, Vector3};
 
 pub struct Ray {
     pub origin: Point3<f64>,
@@ -12,22 +12,34 @@ impl Ray {
         Self { origin, direction }
     }
 
+    pub fn at(&self, t: f64) -> Point3<f64> {
+        self.origin + t * self.direction
+    }
+
     pub fn color(&self) -> Color {
-        if self.hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5) {
-            return Color::new(1.0, 0.0, 0.0);
+        let t = self.hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5);
+        if t > 0.0 {
+            let normal = (self.at(t) - Vector3::new(0.0, 0.0, -1.0))
+                .to_vec()
+                .normalize();
+            return Color::new(normal.x + 1.0, normal.y + 1.0, normal.z + 1.0) / 2.0;
         }
         let unit_direction = self.direction.normalize();
         let t = (unit_direction.y + 1.0) / 2.0;
         (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0)
     }
 
-    fn hit_sphere(&self, center: &Point3<f64>, radius: f64) -> bool {
+    fn hit_sphere(&self, center: &Point3<f64>, radius: f64) -> f64 {
         let vec_from_center = self.origin - center;
         let a = self.direction.dot(self.direction);
         let b = 2.0 * vec_from_center.dot(self.direction);
         let c = vec_from_center.dot(vec_from_center) - radius * radius;
         let discriminant = b * b - 4.0 * a * c;
-        discriminant > 0.0
+        if discriminant < 0.0 {
+            -1.0
+        } else {
+            (-b - discriminant.sqrt()) / (2.0 * a)
+        }
     }
 }
 
