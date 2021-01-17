@@ -1,6 +1,79 @@
-use std::io::Write;
+use std::{io::Write, ops::RangeBounds};
 
-use cgmath::{EuclideanSpace, InnerSpace, Point3, Vector3};
+use cgmath::{InnerSpace, Point3, Vector3};
+
+pub struct HitRecord {
+    pub p: Point3<f64>,
+    pub normal: Vector3<f64>,
+    pub t: f64,
+    pub front_face: bool,
+}
+
+pub trait Hittable {
+    fn hit<R: Clone + RangeBounds<f64>>(self, ray: &Ray, t_range: R) -> Option<HitRecord>;
+}
+
+pub struct Sphere {
+    center: Point3<f64>,
+    radius: f64,
+}
+
+impl Sphere {
+    pub fn new(center: Point3<f64>, radius: f64) -> Self {
+        Self { center, radius }
+    }
+}
+
+impl<'sphere> Hittable for &'sphere Sphere {
+    fn hit<R: Clone + RangeBounds<f64>>(self, ray: &Ray, t_range: R) -> Option<HitRecord> {
+        let vec_from_center = ray.origin - self.center;
+        let a = ray.direction.dot(ray.direction);
+        let half_b = vec_from_center.dot(ray.direction);
+        let c = vec_from_center.dot(vec_from_center) - self.radius * self.radius;
+        let discriminant = half_b * half_b - a * c;
+        if discriminant < 0.0 {
+            None
+        } else {
+            let root = (-half_b - discriminant.sqrt()) / a;
+            if t_range.contains(&root) {
+                let t = root;
+                let p = ray.at(t);
+                let normal = (p - self.center) / self.radius;
+                let front_face = ray.direction.dot((p - self.center) / self.radius) < 0.0;
+                Some(HitRecord {
+                    p,
+                    normal: if front_face { normal } else { -normal },
+                    t,
+                    front_face,
+                })
+            } else {
+                let root = (-half_b + discriminant.sqrt()) / a;
+                if t_range.contains(&root) {
+                    let t = root;
+                    let p = ray.at(t);
+                    let normal = (p - self.center) / self.radius;
+                    let front_face = ray.direction.dot((p - self.center) / self.radius) < 0.0;
+                    Some(HitRecord {
+                        p,
+                        normal: if front_face { normal } else { -normal },
+                        t,
+                        front_face,
+                    })
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
+impl<H: Hittable, I: IntoIterator<Item = H>> Hittable for I {
+    fn hit<R: Clone + RangeBounds<f64>>(self, ray: &Ray, t_range: R) -> Option<HitRecord> {
+        self.into_iter()
+            .filter_map(|hittable| hittable.hit(ray, t_range.clone()))
+            .min_by(|a, b| a.t.partial_cmp(&b.t).expect("Hit objects did not found"))
+    }
+}
 
 pub struct Ray {
     pub origin: Point3<f64>,
@@ -16,30 +89,18 @@ impl Ray {
         self.origin + t * self.direction
     }
 
-    pub fn color(&self) -> Color {
-        let t = self.hit_sphere(&Point3::new(0.0, 0.0, -1.0), 0.5);
-        if t > 0.0 {
-            let normal = (self.at(t) - Vector3::new(0.0, 0.0, -1.0))
-                .to_vec()
-                .normalize();
-            return Color::new(normal.x + 1.0, normal.y + 1.0, normal.z + 1.0) / 2.0;
+    pub fn color<H: Hittable>(&self, hittable: H) -> Color {
+        let record = hittable.hit(&self, 0.0..);
+        if let Some(record) = record {
+            return Color::new(
+                record.normal.x + 1.0,
+                record.normal.y + 1.0,
+                record.normal.z + 1.0,
+            ) / 2.0;
         }
         let unit_direction = self.direction.normalize();
         let t = (unit_direction.y + 1.0) / 2.0;
         (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0)
-    }
-
-    fn hit_sphere(&self, center: &Point3<f64>, radius: f64) -> f64 {
-        let vec_from_center = self.origin - center;
-        let a = self.direction.dot(self.direction);
-        let half_b = vec_from_center.dot(self.direction);
-        let c = vec_from_center.dot(vec_from_center) - radius * radius;
-        let discriminant = half_b * half_b - a * c;
-        if discriminant < 0.0 {
-            -1.0
-        } else {
-            (-half_b - discriminant.sqrt()) / a
-        }
     }
 }
 
@@ -60,6 +121,11 @@ fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
     const IMAGE_WIDTH: usize = 400;
     const IMAGE_HEIGHT: usize = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as usize;
+
+    let hittables = vec![
+        Sphere::new(Point3::new(0.0, 0.0, -1.0), 0.5),
+        Sphere::new(Point3::new(0.0, -100.5, -1.0), 100.0),
+    ];
 
     let viewport_height = 2.0;
     let viewport_width = ASPECT_RATIO * viewport_height;
@@ -84,7 +150,7 @@ fn main() {
                 origin,
                 lower_left_corner + u * horizontal + v * vertical - origin,
             );
-            let color = ray.color();
+            let color = ray.color(&hittables);
             write_color(std::io::stdout(), color);
         }
     }
