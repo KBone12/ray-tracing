@@ -32,13 +32,13 @@ impl Ray {
     fn hit_sphere(&self, center: &Point3<f64>, radius: f64) -> f64 {
         let vec_from_center = self.origin - center;
         let a = self.direction.dot(self.direction);
-        let b = 2.0 * vec_from_center.dot(self.direction);
+        let half_b = vec_from_center.dot(self.direction);
         let c = vec_from_center.dot(vec_from_center) - radius * radius;
-        let discriminant = b * b - 4.0 * a * c;
+        let discriminant = half_b * half_b - a * c;
         if discriminant < 0.0 {
             -1.0
         } else {
-            (-b - discriminant.sqrt()) / (2.0 * a)
+            (-half_b - discriminant.sqrt()) / a
         }
     }
 }
