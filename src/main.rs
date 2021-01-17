@@ -102,12 +102,20 @@ fn main() {
         ),
     ];
 
+    let camera_position = Point3::new(3.0, 3.0, 2.0);
+    let camera_look_at = Point3::new(0.0, 0.0, -1.0);
+    let up = Vector3::new(0.0, 1.0, 0.0);
+    let aperture = 2.0;
     let camera = Camera::new(
-        Point3::new(-2.0, 2.0, 1.0),
-        Point3::new(0.0, 0.0, -1.0),
-        Vector3::new(0.0, 1.0, 0.0),
-        90.0,
+        camera_position,
+        camera_look_at,
+        up,
+        20.0,
         ASPECT_RATIO,
+        aperture,
+        (camera_position - camera_look_at)
+            .dot(camera_position - camera_look_at)
+            .sqrt(),
     );
 
     // Print in PPM Image format
