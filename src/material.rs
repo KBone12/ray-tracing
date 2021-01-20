@@ -1,5 +1,7 @@
+use std::sync::{Arc, Mutex};
+
 use cgmath::{AbsDiffEq, InnerSpace, Vector3, Zero};
-use rand::{distributions::Uniform, prelude::Distribution};
+use rand::{distributions::Uniform, prelude::Distribution, Rng};
 
 use crate::{hittable::HitRecord, Color, Ray};
 
@@ -7,19 +9,24 @@ pub trait Material {
     fn scatter(&self, ray: &Ray, record: &HitRecord) -> Option<(Ray, Color)>;
 }
 
-pub struct Lambertian {
+pub struct Lambertian<R: Rng> {
     albedo: Color,
+    rng: Arc<Mutex<R>>,
 }
 
-impl Lambertian {
-    pub fn new(albedo: Color) -> Self {
-        Self { albedo }
+impl<R: Rng> Lambertian<R> {
+    pub fn new(albedo: Color, rng: Arc<Mutex<R>>) -> Self {
+        Self { albedo, rng }
     }
 }
 
-impl Material for Lambertian {
+impl<R: Rng> Material for Lambertian<R> {
     fn scatter(&self, _ray: &Ray, record: &HitRecord) -> Option<(Ray, Color)> {
-        let direction = record.normal + random_unit_vector();
+        let random_unit_vector = {
+            let mut rng = self.rng.lock().expect("The mutex is poisoned");
+            random_unit_vector(&mut *rng)
+        };
+        let direction = record.normal + random_unit_vector;
         let direction = if direction.abs_diff_eq(&Vector3::zero(), f64::EPSILON) {
             record.normal
         } else {
@@ -29,31 +36,34 @@ impl Material for Lambertian {
     }
 }
 
-pub struct Metal {
+pub struct Metal<R: Rng> {
     albedo: Color,
     fuzz: f64,
+    rng: Arc<Mutex<R>>,
 }
 
-impl Metal {
-    pub fn new(albedo: Color, fuzz: f64) -> Self {
+impl<R: Rng> Metal<R> {
+    pub fn new(albedo: Color, fuzz: f64, rng: Arc<Mutex<R>>) -> Self {
         Self {
             albedo,
             fuzz: fuzz.min(1.0),
+            rng,
         }
     }
 }
 
-impl Material for Metal {
+impl<R: Rng> Material for Metal<R> {
     fn scatter(&self, ray: &Ray, record: &HitRecord) -> Option<(Ray, Color)> {
         let normalized_ray_direction = ray.direction.normalize();
         let reflected = normalized_ray_direction
             - 2.0 * normalized_ray_direction.dot(record.normal) * record.normal;
         if reflected.dot(record.normal) > 0.0 {
+            let random_vector = {
+                let mut rng = self.rng.lock().expect("The mutex is poisoned");
+                random_vector_in_unit_sphere(&mut *rng)
+            };
             Some((
-                Ray::new(
-                    record.p,
-                    reflected + self.fuzz * random_vector_in_unit_sphere(),
-                ),
+                Ray::new(record.p, reflected + self.fuzz * random_vector),
                 self.albedo,
             ))
         } else {
@@ -102,21 +112,20 @@ impl Material for Dielectric {
     }
 }
 
-fn random_vector_in_unit_sphere() -> Vector3<f64> {
+fn random_vector_in_unit_sphere<R: Rng>(rng: &mut R) -> Vector3<f64> {
     let distribution = Uniform::from(0.0..1.0);
-    let mut rng = rand::thread_rng();
     loop {
-        let x = distribution.sample(&mut rng);
-        let y = distribution.sample(&mut rng);
-        let z = distribution.sample(&mut rng);
+        let x = distribution.sample(rng);
+        let y = distribution.sample(rng);
+        let z = distribution.sample(rng);
         if x * x + y * y + z * z <= 1.0 {
             return Vector3::new(x, y, z);
         }
     }
 }
 
-fn random_unit_vector() -> Vector3<f64> {
-    random_vector_in_unit_sphere().normalize()
+fn random_unit_vector<R: Rng>(rng: &mut R) -> Vector3<f64> {
+    random_vector_in_unit_sphere(rng).normalize()
 }
 
 fn random_double() -> f64 {
