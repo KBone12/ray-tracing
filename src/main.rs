@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     io::Write,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -16,6 +17,7 @@ use crate::{
     material::{Dielectric, Lambertian, Material, Metal},
 };
 
+#[derive(Clone)]
 pub struct Ray {
     pub origin: Point3<f64>,
     pub direction: Vector3<f64>,
@@ -34,22 +36,35 @@ impl Ray {
 pub type Color = Vector3<f64>;
 
 fn ray_color<H: Hittable>(ray: &Ray, hittable: &H, depth: usize) -> Color {
-    if depth == 0 {
-        return Color::new(0.0, 0.0, 0.0);
-    }
-
-    let record = hittable.hit(ray, 0.001..);
-    if let Some(record) = record {
-        if let Some((scattered, attenuation)) = record.material.scatter(ray, &record) {
-            return attenuation.mul_element_wise(ray_color(&scattered, hittable, depth - 1));
-        } else {
-            return Color::new(0.0, 0.0, 0.0);
+    let mut ray = ray.clone();
+    let mut depth = depth;
+    let mut stack = VecDeque::new();
+    loop {
+        if depth == 0 {
+            stack.push_back(Color::new(0.0, 0.0, 0.0));
+            break;
         }
-    } else {
-        let unit_direction = ray.direction.normalize();
-        let t = (unit_direction.y + 1.0) / 2.0;
-        (1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0)
+
+        let record = hittable.hit(&ray, 0.001..);
+        if let Some(record) = record {
+            if let Some((scattered, attenuation)) = record.material.scatter(&ray, &record) {
+                stack.push_back(attenuation);
+                ray = scattered;
+                depth -= 1;
+            } else {
+                stack.push_back(Color::new(0.0, 0.0, 0.0));
+                break;
+            }
+        } else {
+            let unit_direction = ray.direction.normalize();
+            let t = (unit_direction.y + 1.0) / 2.0;
+            stack.push_back((1.0 - t) * Color::new(1.0, 1.0, 1.0) + t * Color::new(0.5, 0.7, 1.0));
+            break;
+        }
     }
+    stack.iter().rfold(Color::new(1.0, 1.0, 1.0), |acc, color| {
+        color.mul_element_wise(acc)
+    })
 }
 
 fn write_color<W: Write>(mut writer: W, color: Color, samples_per_pixel: usize) {
