@@ -1,5 +1,5 @@
 use cgmath::{InnerSpace, Point3, Vector3};
-use rand::{distributions::Uniform, prelude::Distribution};
+use rand::{distributions::Uniform, prelude::Distribution, Rng};
 
 use crate::Ray;
 
@@ -48,8 +48,8 @@ impl Camera {
         }
     }
 
-    pub fn ray(&self, s: f64, t: f64) -> Ray {
-        let rd = self.lens_radius * random_vector_in_unit_disk();
+    pub fn ray<R: Rng>(&self, s: f64, t: f64, rng: &mut R) -> Ray {
+        let rd = self.lens_radius * random_vector_in_unit_disk(rng);
         let offset = self.u * rd.x + self.v * rd.y;
 
         Ray::new(
@@ -59,12 +59,11 @@ impl Camera {
     }
 }
 
-fn random_vector_in_unit_disk() -> Vector3<f64> {
+fn random_vector_in_unit_disk<R: Rng>(rng: &mut R) -> Vector3<f64> {
     let distribution = Uniform::from(0.0..1.0);
-    let mut rng = rand::thread_rng();
     loop {
-        let x = distribution.sample(&mut rng);
-        let y = distribution.sample(&mut rng);
+        let x = distribution.sample(rng);
+        let y = distribution.sample(rng);
         if x * x + y * y <= 1.0 {
             return Vector3::new(x, y, 0.0);
         }

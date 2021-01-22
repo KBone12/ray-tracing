@@ -187,7 +187,7 @@ fn main() {
                 let u = (x as f64 + random_numbers[index * 2]) / (IMAGE_WIDTH as f64 - 1.0);
                 let v = ((IMAGE_HEIGHT - y) as f64 + random_numbers[index * 2 + 1])
                     / (IMAGE_HEIGHT as f64 - 1.0);
-                let ray = camera.ray(u, v);
+                let ray = camera.ray(u, v, &mut rng);
                 acc + ray_color(&ray, &hittables, MAX_DEPTH, &mut rng)
             });
             write_color(std::io::stdout(), color, SAMPLES_PER_PIXEL);
