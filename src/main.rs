@@ -1,12 +1,7 @@
-use std::{
-    collections::VecDeque,
-    io::Write,
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
+use std::{collections::VecDeque, io::Write, rc::Rc};
 
 use cgmath::{ElementWise, InnerSpace, Point3, Vector3};
-use rand::{distributions::Uniform, prelude::Distribution, rngs::SmallRng, SeedableRng};
+use rand::{distributions::Uniform, prelude::Distribution, rngs::SmallRng, Rng, SeedableRng};
 
 mod camera;
 mod hittable;
@@ -14,7 +9,7 @@ mod material;
 use crate::{
     camera::Camera,
     hittable::{Hittable, Sphere},
-    material::{Dielectric, Lambertian, Material, Metal},
+    material::Material,
 };
 
 #[derive(Clone)]
@@ -35,7 +30,7 @@ impl Ray {
 
 pub type Color = Vector3<f64>;
 
-fn ray_color<H: Hittable>(ray: &Ray, hittable: &H, depth: usize) -> Color {
+fn ray_color<H: Hittable, R: Rng>(ray: &Ray, hittable: &H, depth: usize, rng: &mut R) -> Color {
     let mut ray = ray.clone();
     let mut depth = depth;
     let mut stack = VecDeque::new();
@@ -47,7 +42,7 @@ fn ray_color<H: Hittable>(ray: &Ray, hittable: &H, depth: usize) -> Color {
 
         let record = hittable.hit(&ray, 0.001..);
         if let Some(record) = record {
-            if let Some((scattered, attenuation)) = record.material.scatter(&ray, &record) {
+            if let Some((scattered, attenuation)) = record.material.scatter(&ray, &record, rng) {
                 stack.push_back(attenuation);
                 ray = scattered;
                 depth -= 1;
@@ -89,14 +84,11 @@ fn main() {
     const SAMPLES_PER_PIXEL: usize = 500;
     const MAX_DEPTH: usize = 50;
 
-    let rng = Arc::new(Mutex::new(SmallRng::seed_from_u64(
+    let mut rng = SmallRng::seed_from_u64(
         0b0101010101010101_0101010101010101_0101010101010101_0101010101010101,
-    )));
+    );
 
-    let ground_material: Rc<Box<dyn Material>> = Rc::new(Box::new(Lambertian::new(
-        Color::new(0.5, 0.5, 0.5),
-        Arc::clone(&rng),
-    )));
+    let ground_material = Rc::new(Material::new_lambertian(Color::new(0.5, 0.5, 0.5)));
     let mut hittables = Vec::new();
     hittables.push(Sphere::new(
         Point3::new(0.0, -1000.0, 0.0),
@@ -105,58 +97,43 @@ fn main() {
     ));
 
     let distribution = Uniform::from(0.0..1.0);
-    let dielectric: Rc<Box<dyn Material>> = Rc::new(Box::new(Dielectric::new(1.5)));
+    let dielectric = Rc::new(Material::new_dielectric(1.5));
     for a in -11..11 {
         for b in -11..11 {
-            let material_probability = {
-                let mut rng = rng.lock().expect("The mutex is poisoned");
-                distribution.sample(&mut *rng)
-            };
-            let center = {
-                let mut rng = rng.lock().expect("The mutex is poisoned");
-                Point3::new(
-                    a as f64 + 0.9 * distribution.sample(&mut *rng),
-                    0.2,
-                    b as f64 + 0.9 * distribution.sample(&mut *rng),
-                )
-            };
+            let material_probability = distribution.sample(&mut rng);
+            let center = Point3::new(
+                a as f64 + 0.9 * distribution.sample(&mut rng),
+                0.2,
+                b as f64 + 0.9 * distribution.sample(&mut rng),
+            );
 
             if (center - Point3::new(4.0, 0.2, 0.0))
                 .dot(center - Point3::new(4.0, 0.2, 0.0))
                 .sqrt()
                 > 0.9
             {
-                let material: Rc<Box<dyn Material>> = if material_probability < 0.8 {
-                    let albedo = {
-                        let mut rng = rng.lock().expect("The mutex is poisoned");
-                        Color::new(
-                            distribution.sample(&mut *rng),
-                            distribution.sample(&mut *rng),
-                            distribution.sample(&mut *rng),
-                        )
-                        .mul_element_wise(Color::new(
-                            distribution.sample(&mut *rng),
-                            distribution.sample(&mut *rng),
-                            distribution.sample(&mut *rng),
-                        ))
-                    };
-                    Rc::new(Box::new(Lambertian::new(albedo, Arc::clone(&rng))))
+                let material = if material_probability < 0.8 {
+                    let albedo = Color::new(
+                        distribution.sample(&mut rng),
+                        distribution.sample(&mut rng),
+                        distribution.sample(&mut rng),
+                    )
+                    .mul_element_wise(Color::new(
+                        distribution.sample(&mut rng),
+                        distribution.sample(&mut rng),
+                        distribution.sample(&mut rng),
+                    ));
+                    Rc::new(Material::new_lambertian(albedo))
                 } else if material_probability < 0.95 {
                     let distribution = Uniform::from(0.5..1.0);
-                    let albedo = {
-                        let mut rng = rng.lock().expect("The mutex is poisoned");
-                        Color::new(
-                            distribution.sample(&mut *rng),
-                            distribution.sample(&mut *rng),
-                            distribution.sample(&mut *rng),
-                        )
-                    };
+                    let albedo = Color::new(
+                        distribution.sample(&mut rng),
+                        distribution.sample(&mut rng),
+                        distribution.sample(&mut rng),
+                    );
                     let distribution = Uniform::from(0.0..0.5);
-                    let fuzz = {
-                        let mut rng = rng.lock().expect("The mutex is poisoned");
-                        distribution.sample(&mut *rng)
-                    };
-                    Rc::new(Box::new(Metal::new(albedo, fuzz, Arc::clone(&rng))))
+                    let fuzz = distribution.sample(&mut rng);
+                    Rc::new(Material::new_metal(albedo, fuzz))
                 } else {
                     Rc::clone(&dielectric)
                 };
@@ -172,19 +149,12 @@ fn main() {
     hittables.push(Sphere::new(
         Point3::new(-4.0, 1.0, 0.0),
         1.0,
-        Rc::new(Box::new(Lambertian::new(
-            Color::new(0.4, 0.2, 0.1),
-            Arc::clone(&rng),
-        ))),
+        Rc::new(Material::new_lambertian(Color::new(0.4, 0.2, 0.1))),
     ));
     hittables.push(Sphere::new(
         Point3::new(4.0, 1.0, 0.0),
         1.0,
-        Rc::new(Box::new(Metal::new(
-            Color::new(0.7, 0.6, 0.5),
-            0.0,
-            Arc::clone(&rng),
-        ))),
+        Rc::new(Material::new_metal(Color::new(0.7, 0.6, 0.5), 0.0)),
     ));
 
     let camera_position = Point3::new(13.0, 3.0, 2.0);
@@ -205,13 +175,10 @@ fn main() {
     println!("P3");
     println!("{} {}", IMAGE_WIDTH, IMAGE_HEIGHT);
     println!("255"); // max color
-    let random_numbers: Vec<_> = {
-        let mut rng = rng.lock().expect("The mutex is poisoned");
-        distribution
-            .sample_iter(&mut *rng)
-            .take(2 * SAMPLES_PER_PIXEL * IMAGE_WIDTH * IMAGE_HEIGHT)
-            .collect()
-    };
+    let random_numbers: Vec<_> = distribution
+        .sample_iter(&mut rng)
+        .take(2 * SAMPLES_PER_PIXEL * IMAGE_WIDTH * IMAGE_HEIGHT)
+        .collect();
     for y in 0..IMAGE_HEIGHT {
         eprintln!("Scan lines remaining: {}", IMAGE_HEIGHT - y);
         for x in 0..IMAGE_WIDTH {
@@ -221,7 +188,7 @@ fn main() {
                 let v = ((IMAGE_HEIGHT - y) as f64 + random_numbers[index * 2 + 1])
                     / (IMAGE_HEIGHT as f64 - 1.0);
                 let ray = camera.ray(u, v);
-                acc + ray_color(&ray, &hittables, MAX_DEPTH)
+                acc + ray_color(&ray, &hittables, MAX_DEPTH, &mut rng)
             });
             write_color(std::io::stdout(), color, SAMPLES_PER_PIXEL);
         }
