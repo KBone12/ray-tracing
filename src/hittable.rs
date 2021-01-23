@@ -1,24 +1,25 @@
-use std::{ops::RangeBounds, rc::Rc};
+use std::ops::RangeBounds;
 
 use cgmath::{InnerSpace, Point3, Vector3};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{material::Material, Ray};
 
-pub struct HitRecord {
+pub struct HitRecord<'material> {
     pub p: Point3<f64>,
     pub normal: Vector3<f64>,
-    pub material: Rc<Material>,
+    pub material: &'material Material,
     pub t: f64,
     pub front_face: bool,
 }
 
 pub trait Hittable {
-    fn hit<R: Clone + RangeBounds<f64>>(&self, ray: &Ray, t_range: R) -> Option<HitRecord>;
+    fn hit<R: Clone + RangeBounds<f64> + Sync>(&self, ray: &Ray, t_range: R) -> Option<HitRecord>;
 }
 
-impl<H: Hittable> Hittable for Vec<H> {
-    fn hit<R: Clone + RangeBounds<f64>>(&self, ray: &Ray, t_range: R) -> Option<HitRecord> {
-        self.iter()
+impl<H: Hittable + Send + Sync> Hittable for Vec<H> {
+    fn hit<R: Clone + RangeBounds<f64> + Sync>(&self, ray: &Ray, t_range: R) -> Option<HitRecord> {
+        self.par_iter()
             .filter_map(|hittable| hittable.hit(ray, t_range.clone()))
             .min_by(|a, b| a.t.partial_cmp(&b.t).expect("Hit objects did not found"))
     }
@@ -27,11 +28,11 @@ impl<H: Hittable> Hittable for Vec<H> {
 pub struct Sphere {
     center: Point3<f64>,
     radius: f64,
-    material: Rc<Material>,
+    material: Material,
 }
 
 impl Sphere {
-    pub fn new(center: Point3<f64>, radius: f64, material: Rc<Material>) -> Self {
+    pub fn new(center: Point3<f64>, radius: f64, material: Material) -> Self {
         Self {
             center,
             radius,
@@ -59,7 +60,7 @@ impl Hittable for Sphere {
                 Some(HitRecord {
                     p,
                     normal: if front_face { normal } else { -normal },
-                    material: Rc::clone(&self.material),
+                    material: &self.material,
                     t,
                     front_face,
                 })
@@ -73,7 +74,7 @@ impl Hittable for Sphere {
                     Some(HitRecord {
                         p,
                         normal: if front_face { normal } else { -normal },
-                        material: Rc::clone(&self.material),
+                        material: &self.material,
                         t,
                         front_face,
                     })
