@@ -1,7 +1,8 @@
-use std::{collections::VecDeque, io::Write, rc::Rc};
+use std::{collections::VecDeque, io::Write};
 
 use cgmath::{ElementWise, InnerSpace, Point3, Vector3};
 use rand::{distributions::Uniform, prelude::Distribution, rngs::SmallRng, Rng, SeedableRng};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 
 mod camera;
 mod hittable;
@@ -57,9 +58,10 @@ fn ray_color<H: Hittable, R: Rng>(ray: &Ray, hittable: &H, depth: usize, rng: &m
             break;
         }
     }
-    stack.iter().rfold(Color::new(1.0, 1.0, 1.0), |acc, color| {
-        color.mul_element_wise(acc)
-    })
+    stack.into_par_iter().reduce(
+        || Color::new(1.0, 1.0, 1.0),
+        |left, right| left.mul_element_wise(right),
+    )
 }
 
 fn write_color<W: Write>(mut writer: W, color: Color, samples_per_pixel: usize) {
@@ -84,11 +86,7 @@ fn main() {
     const SAMPLES_PER_PIXEL: usize = 500;
     const MAX_DEPTH: usize = 50;
 
-    let mut rng = SmallRng::seed_from_u64(
-        0b0101010101010101_0101010101010101_0101010101010101_0101010101010101,
-    );
-
-    let ground_material = Rc::new(Material::new_lambertian(Color::new(0.5, 0.5, 0.5)));
+    let ground_material = Material::new_lambertian(Color::new(0.5, 0.5, 0.5));
     let mut hittables = Vec::new();
     hittables.push(Sphere::new(
         Point3::new(0.0, -1000.0, 0.0),
@@ -96,8 +94,11 @@ fn main() {
         ground_material,
     ));
 
+    let mut rng = SmallRng::seed_from_u64(
+        0b0101010101010101_0101010101010101_0101010101010101_0101010101010101,
+    );
     let distribution = Uniform::from(0.0..1.0);
-    let dielectric = Rc::new(Material::new_dielectric(1.5));
+    let dielectric = Material::new_dielectric(1.5);
     for a in -11..11 {
         for b in -11..11 {
             let material_probability = distribution.sample(&mut rng);
@@ -123,7 +124,7 @@ fn main() {
                         distribution.sample(&mut rng),
                         distribution.sample(&mut rng),
                     ));
-                    Rc::new(Material::new_lambertian(albedo))
+                    Material::new_lambertian(albedo)
                 } else if material_probability < 0.95 {
                     let distribution = Uniform::from(0.5..1.0);
                     let albedo = Color::new(
@@ -133,28 +134,24 @@ fn main() {
                     );
                     let distribution = Uniform::from(0.0..0.5);
                     let fuzz = distribution.sample(&mut rng);
-                    Rc::new(Material::new_metal(albedo, fuzz))
+                    Material::new_metal(albedo, fuzz)
                 } else {
-                    Rc::clone(&dielectric)
+                    dielectric.clone()
                 };
                 hittables.push(Sphere::new(center, 0.2, material));
             }
         }
     }
-    hittables.push(Sphere::new(
-        Point3::new(0.0, 1.0, 0.0),
-        1.0,
-        Rc::clone(&dielectric),
-    ));
+    hittables.push(Sphere::new(Point3::new(0.0, 1.0, 0.0), 1.0, dielectric));
     hittables.push(Sphere::new(
         Point3::new(-4.0, 1.0, 0.0),
         1.0,
-        Rc::new(Material::new_lambertian(Color::new(0.4, 0.2, 0.1))),
+        Material::new_lambertian(Color::new(0.4, 0.2, 0.1)),
     ));
     hittables.push(Sphere::new(
         Point3::new(4.0, 1.0, 0.0),
         1.0,
-        Rc::new(Material::new_metal(Color::new(0.7, 0.6, 0.5), 0.0)),
+        Material::new_metal(Color::new(0.7, 0.6, 0.5), 0.0),
     ));
 
     let camera_position = Point3::new(13.0, 3.0, 2.0);
@@ -175,21 +172,22 @@ fn main() {
     println!("P3");
     println!("{} {}", IMAGE_WIDTH, IMAGE_HEIGHT);
     println!("255"); // max color
-    let random_numbers: Vec<_> = distribution
-        .sample_iter(&mut rng)
-        .take(2 * SAMPLES_PER_PIXEL * IMAGE_WIDTH * IMAGE_HEIGHT)
+    let mut rngs: Vec<_> = (0..SAMPLES_PER_PIXEL)
+        .map(|_| SmallRng::from_entropy())
         .collect();
     for y in 0..IMAGE_HEIGHT {
         eprintln!("Scan lines remaining: {}", IMAGE_HEIGHT - y);
         for x in 0..IMAGE_WIDTH {
-            let color = (0..SAMPLES_PER_PIXEL).fold(Color::new(0.0, 0.0, 0.0), |acc, s| {
-                let index = y * (IMAGE_WIDTH * SAMPLES_PER_PIXEL) + x * SAMPLES_PER_PIXEL + s;
-                let u = (x as f64 + random_numbers[index * 2]) / (IMAGE_WIDTH as f64 - 1.0);
-                let v = ((IMAGE_HEIGHT - y) as f64 + random_numbers[index * 2 + 1])
-                    / (IMAGE_HEIGHT as f64 - 1.0);
-                let ray = camera.ray(u, v, &mut rng);
-                acc + ray_color(&ray, &hittables, MAX_DEPTH, &mut rng)
-            });
+            let color = rngs
+                .par_iter_mut()
+                .map(|rng| {
+                    let u = (x as f64 + distribution.sample(rng)) / (IMAGE_WIDTH as f64 - 1.0);
+                    let v = ((IMAGE_HEIGHT - y) as f64 + distribution.sample(rng))
+                        / (IMAGE_HEIGHT as f64 - 1.0);
+                    let ray = camera.ray(u, v, rng);
+                    ray_color(&ray, &hittables, MAX_DEPTH, rng)
+                })
+                .sum();
             write_color(std::io::stdout(), color, SAMPLES_PER_PIXEL);
         }
     }

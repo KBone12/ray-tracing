@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 cgmath = "0.18.0"
 rand = { version = "0.8.2", features = ["small_rng"] }
+rayon = "1.5.0"

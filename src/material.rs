@@ -3,6 +3,7 @@ use rand::{distributions::Uniform, prelude::Distribution, Rng};
 
 use crate::{hittable::HitRecord, Color, Ray};
 
+#[derive(Clone)]
 pub enum Material {
     Lambertian { albedo: Color },
     Metal { albedo: Color, fuzz: f64 },
@@ -72,7 +73,8 @@ impl Material {
                     let r0 = r0 * r0;
                     r0 + (1.0 - r0) * (1.0 - cos).powi(5)
                 };
-                let direction = if refraction_ratio * sin > 1.0 || reflectance > random_double() {
+                let direction = if refraction_ratio * sin > 1.0 || reflectance > random_double(rng)
+                {
                     let normalized_ray_direction = ray.direction.normalize();
                     normalized_ray_direction
                         - 2.0 * normalized_ray_direction.dot(record.normal) * record.normal
@@ -103,6 +105,6 @@ fn random_unit_vector<R: Rng>(rng: &mut R) -> Vector3<f64> {
     random_vector_in_unit_sphere(rng).normalize()
 }
 
-fn random_double() -> f64 {
-    Uniform::from(0.0..1.0).sample(&mut rand::thread_rng())
+fn random_double<R: Rng>(rng: &mut R) -> f64 {
+    Uniform::from(0.0..1.0).sample(rng)
 }
